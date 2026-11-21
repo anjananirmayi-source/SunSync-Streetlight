@@ -24,6 +24,9 @@ bool gps_is_valid();
 double gps_get_latitude();
 double gps_get_longitude();
 
+// Satellite count (-1 if invalid or age > 10000ms)
+int gps_get_satellites();
+
 // Converted IST time and date (UTC + 05:30 with rollover)
 IstTime gps_get_ist_time();
 
