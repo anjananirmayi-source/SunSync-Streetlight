@@ -22,6 +22,8 @@
       longitude: 77.5946,
       sunrise: '06:15',
       sunset: '17:55',
+      time: '12:34',
+      satellites: 7,
       lightOn: false,
       automationEnabled: false
     },
@@ -31,6 +33,8 @@
       longitude: null,
       sunrise: null,
       sunset: null,
+      time: null,
+      satellites: null,
       lightOn: false,
       automationEnabled: false
     },
@@ -40,6 +44,8 @@
       longitude: 77.5946,
       sunrise: '06:15',
       sunset: '17:55',
+      time: '19:45',
+      satellites: 9,
       lightOn: true,
       automationEnabled: true
     }

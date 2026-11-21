@@ -3,7 +3,7 @@
 ESP32 Smart Streetlight - Mock Server (Person A)
 Python 3 standard library only.
 
-Serves frontend/ and implements API Contract v2.0:
+Serves frontend/ and implements API Contract v2.1:
 - GET  /api/status
 - POST /api/light
 - OPTIONS /api/* (CORS)
@@ -41,6 +41,8 @@ class MockHardwareState:
             self.longitude = None
             self.sunrise = None
             self.sunset = None
+            self.time = None
+            self.satellites = None
             self.light_on = False
             self.automation_enabled = False
         elif scenario == "automation_on":
@@ -49,6 +51,8 @@ class MockHardwareState:
             self.longitude = 77.5946
             self.sunrise = "06:15"
             self.sunset = "17:55"
+            self.time = "19:45"
+            self.satellites = 9
             self.light_on = True
             self.automation_enabled = True
         elif scenario == "command_fail":
@@ -57,6 +61,8 @@ class MockHardwareState:
             self.longitude = 77.5946
             self.sunrise = "06:15"
             self.sunset = "17:55"
+            self.time = "12:34"
+            self.satellites = 7
             self.light_on = False
             self.automation_enabled = False
         elif scenario == "esp_offline":
@@ -65,6 +71,8 @@ class MockHardwareState:
             self.longitude = None
             self.sunrise = None
             self.sunset = None
+            self.time = None
+            self.satellites = None
             self.light_on = False
             self.automation_enabled = False
         else:  # "gps_ok" or "automation_off"
@@ -74,6 +82,8 @@ class MockHardwareState:
             self.longitude = 77.5946
             self.sunrise = "06:15"
             self.sunset = "17:55"
+            self.time = "12:34"
+            self.satellites = 7
             self.light_on = False
             self.automation_enabled = False
 
@@ -84,6 +94,8 @@ class MockHardwareState:
             "longitude": self.longitude,
             "sunrise": self.sunrise,
             "sunset": self.sunset,
+            "time": self.time,
+            "satellites": self.satellites,
             "lightOn": self.light_on,
             "automationEnabled": self.automation_enabled
         }

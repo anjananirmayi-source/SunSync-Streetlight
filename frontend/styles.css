@@ -224,6 +224,11 @@ body {
   gap: 16px;
 }
 
+/* Satellites & Time value smaller to fit tidily */
+#val-satellites, #val-time {
+  font-size: 1.15rem;
+}
+
 .metric-item { display: flex; flex-direction: column; }
 .metric-label {
   font-size: 0.8rem;

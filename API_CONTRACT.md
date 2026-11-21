@@ -1,4 +1,4 @@
-# API Contract — Frontend <-> ESP32 (v2.0)
+# API Contract — Frontend <-> ESP32 (v2.1)
 
 SOURCE OF TRUTH. Status: PROPOSED, UNTESTED ON HARDWARE. Change process: edit this file, bump version, add a Changelog line, notify teammate.
 Only two endpoints exist. Do not add more without asking the owner.
@@ -18,6 +18,8 @@ Only two endpoints exist. Do not add more without asking the owner.
   "longitude": 77.5946,
   "sunrise": "06:15",
   "sunset": "17:55",
+  "time": "12:34",
+  "satellites": 7,
   "lightOn": false,
   "automationEnabled": true
 }
@@ -29,6 +31,8 @@ Only two endpoints exist. Do not add more without asking the owner.
 | gpsValid | bool | TinyGPSPlus location.isValid() |
 | latitude, longitude | number\|null | decimal degrees; null unless gpsValid |
 | sunrise, sunset | string\|null | IST "HH:MM", calculated on the ESP32; null unless GPS location+date valid (or polar day/night) |
+| time | string\|null | Current IST time "HH:MM" derived from GPS UTC + offset; null unless GPS time is valid |
+| satellites | number\|null | Number of satellites currently tracked by TinyGPSPlus; null unless GPS time valid |
 | lightOn | bool | ACTUAL relay output state (GPIO23 HIGH = true), read back from the pin, not from a requested variable |
 | automationEnabled | bool | value of `AUTOMATION_ENABLED` in firmware config.h |
 
@@ -65,4 +69,5 @@ curl -X POST http://<esp-ip>/api/light -H "Content-Type: application/json" -d '{
 ```
 
 ## Changelog
+- v2.1 — added `time` (current IST HH:MM from GPS) and `satellites` (tracked satellite count) to `GET /api/status`.
 - v2.0 — restart. Simplified: removed /api/mode and all LDR/ambient-light, GPS-detail and mode fields (the project has no LDR); added `automationEnabled`.
