@@ -3,43 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Streetlight</title>
+  <title>Smart Streetlight — SolarSync Dashboard</title>
+  <meta name="description" content="Local GPS-Based Intelligent Lighting System Dashboard">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="demo-banner" class="demo-banner" role="status" aria-live="polite" hidden>
+  <!-- Demo Mode Banner (Hidden in real mode) -->
+  <aside class="demo-banner" id="demo-banner" role="status" aria-label="Demo mode warning" hidden>
     <div class="demo-banner-content">
-      <span class="demo-badge">DEMO MODE</span>
-      <span>SAMPLE DATA, NOT FROM HARDWARE</span>
-      <div class="demo-controls">
-        <label for="demo-scenario-select" class="visually-hidden">Scenario</label>
-        <select id="demo-scenario-select" class="demo-select">
-          <option value="gps_ok">GPS Active & Valid</option>
-          <option value="gps_waiting">GPS Waiting (No Fix)</option>
-          <option value="automation_on">Automation Active (ON)</option>
-        </select>
-        <button type="button" id="demo-exit-btn" class="demo-btn">Exit Demo</button>
+      <span class="demo-pill">DEMO ACTIVE</span>
+      <span class="demo-text">DEMO MODE — SAMPLE DATA, NOT FROM HARDWARE</span>
+      <button type="button" class="btn-demo-exit" id="btn-demo-exit" aria-label="Exit Demo Mode">Exit Demo</button>
+    </div>
+  </aside>
+
+  <header class="app-header">
+    <div class="header-content">
+      <div class="header-titles">
+        <h1 class="system-title">SMART STREETLIGHT</h1>
+        <p class="system-subtitle">SolarSync Intelligent Lighting System</p>
+      </div>
+      <div class="header-status">
+        <div class="connection-pill disconnected" id="connection-pill" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="status-label" id="connection-text">Disconnected</span>
+        </div>
       </div>
     </div>
-  </div>
+  </header>
 
-  <div class="app-container">
-    <header class="app-header">
-      <div class="header-titles">
-        <h1 class="main-title">SMART STREETLIGHT</h1>
-        <p class="sub-title">GPS-Based Intelligent Lighting System</p>
-      </div>
-      <div class="connection-pill" id="connection-pill" aria-live="polite">
-        <span class="status-indicator" id="connection-dot" aria-hidden="true"></span>
-        <span class="status-label" id="connection-text">Connecting...</span>
-      </div>
-    </header>
+  <main class="dashboard-grid" id="main-content">
+    <div class="cards-layout">
 
-    <main class="dashboard-grid">
       <section class="card" aria-labelledby="gps-title">
         <div class="card-header">
           <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/>
+            <path d="M12 2a8 8 0 0 0-8 8c0 5.4 7.4 11.5 7.7 11.8a.5.5 0 0 0 .6 0C12.6 21.5 20 15.4 20 10a8 8 0 0 0-8-8z"/>
+            <circle cx="12" cy="10" r="3"/>
           </svg>
           <h2 id="gps-title" class="card-title">GPS Coordinates</h2>
         </div>
@@ -83,7 +83,16 @@
             <path d="M15 14c.2-1 .7-1.8 1.4-2.5A4.6 4.6 0 0 0 18 8a6 6 0 1 0-12 0c0 1 .3 2.2 1.5 3.5A4.6 4.6 0 0 1 9 14"/>
             <line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/>
           </svg>
-          <h2 id="control-title" class="card-title">Streetlight State</h2>
+          <h2 id="control-title" class="card-title">Streetlight Control</h2>
+        </div>
+
+        <!-- Mode Selector (AUTO / MANUAL) -->
+        <div class="mode-selector-group" role="radiogroup" aria-label="Operating Mode">
+          <span class="mode-selector-label">Operating Mode:</span>
+          <div class="mode-toggle-pill">
+            <button type="button" class="btn-mode active" id="btn-mode-auto" role="radio" aria-checked="true">AUTO</button>
+            <button type="button" class="btn-mode" id="btn-mode-manual" role="radio" aria-checked="false">MANUAL</button>
+          </div>
         </div>
 
         <div class="relay-state-display" aria-live="polite">
@@ -112,13 +121,18 @@
 
         <div class="command-error" id="command-error" role="alert" aria-live="assertive" hidden></div>
       </section>
-    </main>
 
-    <footer class="app-footer">
-      <span>ESP32 Local Lighting Controller</span>
-      <button type="button" id="demo-enter-btn" class="demo-trigger-btn">Demo Mode</button>
-    </footer>
-  </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-content">
+      <span class="footer-note">Direct ESP32 REST Control</span>
+      <div class="footer-actions">
+        <button type="button" class="btn-demo-toggle" id="btn-demo-toggle">Demo Mode</button>
+      </div>
+    </div>
+  </footer>
 
   <script src="config.js"></script>
   <script src="app.js"></script>

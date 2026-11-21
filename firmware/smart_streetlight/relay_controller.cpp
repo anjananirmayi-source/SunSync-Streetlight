@@ -3,12 +3,16 @@
 #include "gps_handler.h"
 #include "sun_calc.h"
 
+// Runtime controllable mode (initial value defined by AUTOMATION_ENABLED in config.h)
+static bool s_autoMode = AUTOMATION_ENABLED;
+
 void relay_init() {
   // Default D1: At boot the relay output is set LOW (OFF) before anything else
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
 #if DEBUG
-  Serial.printf("[RELAY] Initialized GPIO%d as OUTPUT, state set to LOW (OFF)\n", RELAY_PIN);
+  Serial.printf("[RELAY] Initialized GPIO%d as OUTPUT, state set to LOW (OFF), initial mode: %s\n",
+                RELAY_PIN, s_autoMode ? "AUTO" : "MANUAL");
 #endif
 }
 
@@ -30,8 +34,25 @@ void relay_set(bool on, const char* reason) {
   }
 }
 
+bool relay_is_auto_mode() {
+  return s_autoMode;
+}
+
+void relay_set_auto_mode(bool autoMode) {
+  if (s_autoMode != autoMode) {
+    s_autoMode = autoMode;
+#if DEBUG
+    Serial.printf("[MODE] Mode changed to: %s\n", s_autoMode ? "AUTO" : "MANUAL");
+#endif
+  }
+}
+
+const char* relay_get_mode_str() {
+  return s_autoMode ? "AUTO" : "MANUAL";
+}
+
 void relay_automation_update() {
-  if (!AUTOMATION_ENABLED) {
+  if (!s_autoMode) {
     return;
   }
 
@@ -63,4 +84,3 @@ void relay_automation_update() {
 
   relay_set(shouldBeOn, "AUTOMATION_SCHEDULE");
 }
-

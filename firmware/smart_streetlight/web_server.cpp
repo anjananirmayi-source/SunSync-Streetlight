@@ -92,7 +92,8 @@ static void handle_get_status() {
 
   // Strictly read back hardware relay pin state
   doc["lightOn"] = relay_is_on();
-  doc["automationEnabled"] = AUTOMATION_ENABLED;
+  doc["automationEnabled"] = relay_is_auto_mode();
+  doc["mode"] = relay_get_mode_str();
 
   String output;
   serializeJson(doc, output);
@@ -100,6 +101,34 @@ static void handle_get_status() {
 
 #if DEBUG
   Serial.println("[HTTP] Handled GET /api/status");
+#endif
+}
+
+static void execute_light_switch(bool turnOn, const char* caller) {
+  if (relay_is_auto_mode()) {
+    send_json_error(409, "AUTOMATION_ENABLED", "Manual control disabled: automation is active");
+    return;
+  }
+
+  relay_set(turnOn, caller);
+  bool actualLightOn = relay_is_on();
+
+  send_cors_headers();
+#if defined(ARDUINOJSON_VERSION_MAJOR) && ARDUINOJSON_VERSION_MAJOR >= 7
+  JsonDocument respDoc;
+#else
+  StaticJsonDocument<128> respDoc;
+#endif
+  respDoc["ok"] = true;
+  respDoc["lightOn"] = actualLightOn;
+
+  String output;
+  serializeJson(respDoc, output);
+  server.send(200, "application/json", output);
+
+#if DEBUG
+  Serial.printf("[HTTP] Handled %s (Turn %s -> Current: %s)\n",
+                caller, turnOn ? "ON" : "OFF", actualLightOn ? "ON" : "OFF");
 #endif
 }
 
@@ -113,8 +142,7 @@ static void handle_post_light() {
     return;
   }
 
-  // Contract: 409 AUTOMATION_ENABLED when automation is on
-  if (AUTOMATION_ENABLED) {
+  if (relay_is_auto_mode()) {
     send_json_error(409, "AUTOMATION_ENABLED", "Manual control disabled: automation is active");
     return;
   }
@@ -148,21 +176,33 @@ static void handle_post_light() {
   }
 
   const char* stateStr = doc["state"];
-  bool turnOn = false;
   if (strcmp(stateStr, "ON") == 0) {
-    turnOn = true;
+    execute_light_switch(true, "POST /api/light");
   } else if (strcmp(stateStr, "OFF") == 0) {
-    turnOn = false;
+    execute_light_switch(false, "POST /api/light");
   } else {
     send_json_error(400, "INVALID_VALUE", "state must be ON or OFF");
+  }
+}
+
+static void handle_get_light_on() {
+  if (server.method() == HTTP_OPTIONS) {
+    handle_options();
     return;
   }
+  execute_light_switch(true, "GET /api/light/on");
+}
 
-  // Apply state to relay
-  relay_set(turnOn, "API_MANUAL_COMMAND");
+static void handle_get_light_off() {
+  if (server.method() == HTTP_OPTIONS) {
+    handle_options();
+    return;
+  }
+  execute_light_switch(false, "GET /api/light/off");
+}
 
-  // Read back actual state directly from hardware pin
-  bool actualLightOn = relay_is_on();
+static void apply_mode(bool isAuto) {
+  relay_set_auto_mode(isAuto);
 
   send_cors_headers();
 #if defined(ARDUINOJSON_VERSION_MAJOR) && ARDUINOJSON_VERSION_MAJOR >= 7
@@ -171,16 +211,88 @@ static void handle_post_light() {
   StaticJsonDocument<128> respDoc;
 #endif
   respDoc["ok"] = true;
-  respDoc["lightOn"] = actualLightOn;
+  respDoc["mode"] = relay_get_mode_str();
+  respDoc["automationEnabled"] = relay_is_auto_mode();
 
   String output;
   serializeJson(respDoc, output);
   server.send(200, "application/json", output);
 
 #if DEBUG
-  Serial.printf("[HTTP] Handled POST /api/light (Requested: %s, Current: %s)\n",
-                stateStr, actualLightOn ? "ON" : "OFF");
+  Serial.printf("[HTTP] Mode updated: %s\n", relay_get_mode_str());
 #endif
+}
+
+static void handle_mode() {
+  if (server.method() == HTTP_OPTIONS) {
+    handle_options();
+    return;
+  }
+
+  if (server.method() == HTTP_GET) {
+    // Return current mode
+    send_cors_headers();
+#if defined(ARDUINOJSON_VERSION_MAJOR) && ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument respDoc;
+#else
+    StaticJsonDocument<128> respDoc;
+#endif
+    respDoc["ok"] = true;
+    respDoc["mode"] = relay_get_mode_str();
+    respDoc["automationEnabled"] = relay_is_auto_mode();
+
+    String output;
+    serializeJson(respDoc, output);
+    server.send(200, "application/json", output);
+    return;
+  }
+
+  if (server.method() != HTTP_POST) {
+    send_json_error(405, "METHOD_NOT_ALLOWED", "Method not allowed");
+    return;
+  }
+
+  if (!server.hasArg("plain") || server.arg("plain").length() == 0) {
+    send_json_error(400, "BAD_REQUEST", "Body missing or invalid JSON");
+    return;
+  }
+
+#if defined(ARDUINOJSON_VERSION_MAJOR) && ARDUINOJSON_VERSION_MAJOR >= 7
+  JsonDocument doc;
+#else
+  StaticJsonDocument<256> doc;
+#endif
+
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
+  if (err || !doc.containsKey("mode") || !doc["mode"].is<const char*>()) {
+    send_json_error(400, "BAD_REQUEST", "Field 'mode' is required as string (AUTO or MANUAL)");
+    return;
+  }
+
+  const char* modeStr = doc["mode"];
+  if (strcasecmp(modeStr, "AUTO") == 0) {
+    apply_mode(true);
+  } else if (strcasecmp(modeStr, "MANUAL") == 0) {
+    apply_mode(false);
+  } else {
+    send_json_error(400, "INVALID_VALUE", "mode must be AUTO or MANUAL");
+  }
+}
+
+static void handle_mode_auto() {
+  if (server.method() == HTTP_OPTIONS) {
+    handle_options();
+    return;
+  }
+  apply_mode(true);
+}
+
+static void handle_mode_manual() {
+  if (server.method() == HTTP_OPTIONS) {
+    handle_options();
+    return;
+  }
+  apply_mode(false);
 }
 
 static String get_content_type(const String& path) {
@@ -236,15 +348,30 @@ void web_server_init() {
   server.on("/api/light", HTTP_POST, handle_post_light);
   server.on("/api/light", HTTP_OPTIONS, handle_options);
 
+  server.on("/api/light/on", HTTP_GET, handle_get_light_on);
+  server.on("/api/light/on", HTTP_OPTIONS, handle_options);
+
+  server.on("/api/light/off", HTTP_GET, handle_get_light_off);
+  server.on("/api/light/off", HTTP_OPTIONS, handle_options);
+
+  server.on("/api/mode", HTTP_POST, handle_mode);
+  server.on("/api/mode", HTTP_GET, handle_mode);
+  server.on("/api/mode", HTTP_OPTIONS, handle_options);
+
+  server.on("/api/mode/auto", HTTP_GET, handle_mode_auto);
+  server.on("/api/mode/auto", HTTP_OPTIONS, handle_options);
+
+  server.on("/api/mode/manual", HTTP_GET, handle_mode_manual);
+  server.on("/api/mode/manual", HTTP_OPTIONS, handle_options);
+
   server.onNotFound(handle_not_found);
 
   server.begin();
 #if DEBUG
-  Serial.println("[HTTP] WebServer started on port 80");
+  Serial.println("[HTTP] WebServer started on port 80 (v2.1 API)");
 #endif
 }
 
 void web_server_handle_client() {
   server.handleClient();
 }
-

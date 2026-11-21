@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
 """
-ESP32 Smart Streetlight - Mock Server (Person A)
-Python 3 standard library only.
+ESP32 Smart Streetlight - Mock HTTP Server (v2.1)
+Simulates ESP32 firmware endpoints for local development and UI testing.
 
-Serves frontend/ and implements API Contract v2.0:
-- GET  /api/status
-- POST /api/light
-- OPTIONS /api/* (CORS)
-
-Switchable scenarios:
-  1. gps_ok: GPS valid, lat/lon/sunrise/sunset valid, light OFF, automation OFF.
-  2. gps_waiting: GPS invalid, lat/lon/sunrise/sunset null, light OFF, automation OFF.
-  3. automation_on: GPS valid, light ON, automation ON (POST /api/light -> 409).
-  4. automation_off: GPS valid, light OFF, automation OFF (POST /api/light toggles light).
-  5. esp_offline: Simulates disconnected ESP32 (HTTP 500 or timeout).
-  6. command_fail: Status is OK, but POST /api/light fails with HTTP 500 error.
+Usage:
+    python tools/mock_server.py [--host 127.0.0.1] [--port 8000] [--scenario SCENARIO]
 """
 
 import sys
@@ -26,7 +16,7 @@ import urllib.parse
 
 # Default Server Configuration
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8080
+DEFAULT_PORT = 8000
 
 # State store for mock hardware
 class MockHardwareState:
@@ -43,6 +33,7 @@ class MockHardwareState:
             self.sunset = None
             self.light_on = False
             self.automation_enabled = False
+            self.mode = "MANUAL"
         elif scenario == "automation_on":
             self.gps_valid = True
             self.latitude = 12.9716
@@ -51,6 +42,7 @@ class MockHardwareState:
             self.sunset = "17:55"
             self.light_on = True
             self.automation_enabled = True
+            self.mode = "AUTO"
         elif scenario == "command_fail":
             self.gps_valid = True
             self.latitude = 12.9716
@@ -59,6 +51,7 @@ class MockHardwareState:
             self.sunset = "17:55"
             self.light_on = False
             self.automation_enabled = False
+            self.mode = "MANUAL"
         elif scenario == "esp_offline":
             self.gps_valid = False
             self.latitude = None
@@ -67,6 +60,7 @@ class MockHardwareState:
             self.sunset = None
             self.light_on = False
             self.automation_enabled = False
+            self.mode = "MANUAL"
         else:  # "gps_ok" or "automation_off"
             self.scenario = "gps_ok"
             self.gps_valid = True
@@ -76,6 +70,15 @@ class MockHardwareState:
             self.sunset = "17:55"
             self.light_on = False
             self.automation_enabled = False
+            self.mode = "MANUAL"
+
+    def set_mode(self, is_auto):
+        self.automation_enabled = is_auto
+        self.mode = "AUTO" if is_auto else "MANUAL"
+        if is_auto:
+            self.scenario = "automation_on"
+        else:
+            self.scenario = "gps_ok"
 
     def to_status_dict(self):
         return {
@@ -85,7 +88,8 @@ class MockHardwareState:
             "sunrise": self.sunrise,
             "sunset": self.sunset,
             "lightOn": self.light_on,
-            "automationEnabled": self.automation_enabled
+            "automationEnabled": self.automation_enabled,
+            "mode": self.mode
         }
 
 STATE = MockHardwareState("gps_ok")
@@ -113,6 +117,23 @@ class MockRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/status":
             self.handle_api_status()
             return
+        elif parsed.path == "/api/light/on":
+            self.handle_direct_light_switch(True)
+            return
+        elif parsed.path == "/api/light/off":
+            self.handle_direct_light_switch(False)
+            return
+        elif parsed.path == "/api/mode":
+            self.send_json(200, {"ok": True, "mode": STATE.mode, "automationEnabled": STATE.automation_enabled})
+            return
+        elif parsed.path == "/api/mode/auto":
+            STATE.set_mode(True)
+            self.send_json(200, {"ok": True, "mode": "AUTO", "automationEnabled": True})
+            return
+        elif parsed.path == "/api/mode/manual":
+            STATE.set_mode(False)
+            self.send_json(200, {"ok": True, "mode": "MANUAL", "automationEnabled": False})
+            return
         elif parsed.path == "/api/mock/scenario":
             self.send_json(200, {"scenario": STATE.scenario, "state": STATE.to_status_dict()})
             return
@@ -125,6 +146,9 @@ class MockRequestHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/light":
             self.handle_api_light()
+            return
+        elif parsed.path == "/api/mode":
+            self.handle_api_mode()
             return
         elif parsed.path == "/api/mock/scenario":
             self.handle_set_scenario()
@@ -146,6 +170,22 @@ class MockRequestHandler(SimpleHTTPRequestHandler):
             return
 
         self.send_json(200, STATE.to_status_dict())
+
+    def handle_direct_light_switch(self, turn_on):
+        if STATE.scenario == "esp_offline":
+            self.send_json(500, {"ok": False, "error": "INTERNAL_ERROR", "message": "Simulated hardware offline"})
+            return
+
+        if STATE.automation_enabled:
+            self.send_json(409, {
+                "ok": False,
+                "error": "AUTOMATION_ENABLED",
+                "message": "Manual control is disabled: Automation is ON (Sunset to Sunrise)"
+            })
+            return
+
+        STATE.light_on = turn_on
+        self.send_json(200, {"ok": True, "lightOn": STATE.light_on})
 
     def handle_api_light(self):
         if STATE.scenario == "esp_offline":
@@ -169,7 +209,7 @@ class MockRequestHandler(SimpleHTTPRequestHandler):
             self.send_json(409, {
                 "ok": False,
                 "error": "AUTOMATION_ENABLED",
-                "message": "Manual control is disabled while automation is enabled"
+                "message": "Manual control is disabled: Automation is ON (Sunset to Sunrise)"
             })
             return
 
@@ -210,6 +250,31 @@ class MockRequestHandler(SimpleHTTPRequestHandler):
             "lightOn": STATE.light_on
         })
 
+    def handle_api_mode(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length == 0:
+            self.send_json(400, {"ok": False, "error": "BAD_REQUEST", "message": "Request body missing"})
+            return
+
+        body_raw = self.rfile.read(content_length).decode("utf-8")
+        try:
+            body = json.loads(body_raw)
+        except Exception:
+            self.send_json(400, {"ok": False, "error": "BAD_REQUEST", "message": "Invalid JSON in request body"})
+            return
+
+        mode_param = body.get("mode", "").upper()
+        if mode_param not in ("AUTO", "MANUAL"):
+            self.send_json(400, {"ok": False, "error": "INVALID_VALUE", "message": "mode must be AUTO or MANUAL"})
+            return
+
+        STATE.set_mode(mode_param == "AUTO")
+        self.send_json(200, {
+            "ok": True,
+            "mode": STATE.mode,
+            "automationEnabled": STATE.automation_enabled
+        })
+
     def handle_set_scenario(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body_raw = self.rfile.read(content_length).decode("utf-8")
@@ -241,11 +306,10 @@ def run_server(host, port, scenario, frontend_dir):
     httpd = HTTPServer(server_address, MockRequestHandler)
 
     print("========================================")
-    print("MOCK SERVER — not the ESP32")
+    print("MOCK SERVER — ESP32 Smart Streetlight (v2.1)")
     print(f"Serving frontend from: {frontend_dir}")
     print(f"Listening on: http://{host}:{port}")
-    print(f"Initial Scenario: {STATE.scenario}")
-    print("Available Scenarios: gps_ok, gps_waiting, automation_on, automation_off, esp_offline, command_fail")
+    print(f"Initial Scenario: {STATE.scenario} (Mode: {STATE.mode})")
     print("========================================")
 
     try:

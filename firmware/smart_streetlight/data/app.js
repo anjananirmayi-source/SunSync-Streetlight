@@ -1,6 +1,6 @@
 /**
- * ESP32 Smart Streetlight - Core Application Engine (Person A)
- * Implements docs/API_CONTRACT.md (v2.0)
+ * ESP32 Smart Streetlight - Core Application Engine (SolarSync)
+ * Implements docs/API_CONTRACT.md (v2.1)
  */
 (function () {
   'use strict';
@@ -23,6 +23,8 @@
     valLongitude: document.getElementById('val-longitude'),
     valSunrise: document.getElementById('val-sunrise'),
     valSunset: document.getElementById('val-sunset'),
+    btnModeAuto: document.getElementById('btn-mode-auto'),
+    btnModeManual: document.getElementById('btn-mode-manual'),
     relayStateBadge: document.getElementById('relay-state-badge'),
     automationNotice: document.getElementById('automation-notice'),
     btnTurnOn: document.getElementById('btn-turn-on'),
@@ -43,13 +45,23 @@
     el.valSunrise.textContent = data.sunrise || '--';
     el.valSunset.textContent = data.sunset || '--';
 
-    // Relay State (Read back from GPIO23)
+    // Mode determination
+    const isAuto = data.mode ? (data.mode === 'AUTO') : Boolean(data.automationEnabled);
+
+    if (el.btnModeAuto && el.btnModeManual) {
+      el.btnModeAuto.classList.toggle('active', isAuto);
+      el.btnModeAuto.setAttribute('aria-checked', isAuto ? 'true' : 'false');
+      el.btnModeManual.classList.toggle('active', !isAuto);
+      el.btnModeManual.setAttribute('aria-checked', !isAuto ? 'true' : 'false');
+    }
+
+    // Automation Notice (shown strictly when AUTO mode is active)
+    el.automationNotice.hidden = !isAuto;
+
+    // Relay State (Read back from ESP32 GPIO23)
     const isLightOn = Boolean(data.lightOn);
     el.relayStateBadge.textContent = isLightOn ? 'ON' : 'OFF';
     el.relayStateBadge.className = `relay-state-badge ${isLightOn ? 'badge-on' : 'badge-off'}`;
-
-    // Automation Notice (shown strictly when automationEnabled = true)
-    el.automationNotice.hidden = !Boolean(data.automationEnabled);
 
     updateButtonStates();
   }
@@ -73,10 +85,20 @@
   }
 
   function updateButtonStates() {
-    const isAuto = state.lastStatus ? Boolean(state.lastStatus.automationEnabled) : false;
-    const shouldDisable = !state.connected || isAuto || state.isCommandInFlight;
-    el.btnTurnOn.disabled = shouldDisable;
-    el.btnTurnOff.disabled = shouldDisable;
+    const isAuto = state.lastStatus
+      ? (state.lastStatus.mode ? (state.lastStatus.mode === 'AUTO') : Boolean(state.lastStatus.automationEnabled))
+      : false;
+
+    // When AUTO: manual ON/OFF buttons are disabled
+    // When MANUAL: manual ON/OFF buttons are enabled
+    const shouldDisableControls = !state.connected || isAuto || state.isCommandInFlight;
+    el.btnTurnOn.disabled = shouldDisableControls;
+    el.btnTurnOff.disabled = shouldDisableControls;
+
+    // Mode buttons
+    const shouldDisableMode = !state.connected || state.isCommandInFlight;
+    if (el.btnModeAuto) el.btnModeAuto.disabled = shouldDisableMode;
+    if (el.btnModeManual) el.btnModeManual.disabled = shouldDisableMode;
   }
 
   function setCommandError(message) {
@@ -147,7 +169,11 @@
   async function sendLightCommand(targetState) {
     if (state.isDemoActive || !state.connected || state.isCommandInFlight) return;
 
-    if (state.lastStatus && state.lastStatus.automationEnabled) {
+    const isAuto = state.lastStatus
+      ? (state.lastStatus.mode ? (state.lastStatus.mode === 'AUTO') : Boolean(state.lastStatus.automationEnabled))
+      : false;
+
+    if (isAuto) {
       setCommandError('Manual control is disabled while automation is enabled.');
       return;
     }
@@ -162,20 +188,22 @@
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
-    const endpoint = (CONFIG.API_BASE || '') + '/api/light';
+    
+    // Per requirement: Turn ON calls GET /api/light/on, Turn OFF calls GET /api/light/off
+    const endpoint = (CONFIG.API_BASE || '') + (targetState === 'ON' ? '/api/light/on' : '/api/light/off');
 
     try {
       const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ state: targetState }),
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.ok) {
-        await pollStatus(); // Confirm real state from ESP32 readback
+        // Fetch /api/status and update the Relay Output status immediately
+        await pollStatus();
       } else {
         const errMsg = data.message || `Command failed with status ${response.status} (${data.error || 'ERROR'})`;
         setCommandError(errMsg);
@@ -190,8 +218,45 @@
     }
   }
 
+  async function switchMode(targetMode) {
+    if (state.isDemoActive || !state.connected || state.isCommandInFlight) return;
+
+    state.isCommandInFlight = true;
+    setCommandError(null);
+    updateButtonStates();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
+    const endpoint = (CONFIG.API_BASE || '') + (targetMode === 'AUTO' ? '/api/mode/auto' : '/api/mode/manual');
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.ok) {
+        await pollStatus();
+      } else {
+        setCommandError(data.message || `Mode switch failed (${data.error || 'ERROR'})`);
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      setCommandError(err.name === 'AbortError' ? 'Mode switch timed out.' : 'Network error reaching ESP32.');
+    } finally {
+      state.isCommandInFlight = false;
+      updateButtonStates();
+    }
+  }
+
   el.btnTurnOn.addEventListener('click', () => sendLightCommand('ON'));
   el.btnTurnOff.addEventListener('click', () => sendLightCommand('OFF'));
+
+  if (el.btnModeAuto) el.btnModeAuto.addEventListener('click', () => switchMode('AUTO'));
+  if (el.btnModeManual) el.btnModeManual.addEventListener('click', () => switchMode('MANUAL'));
 
   window.StreetlightApp = {
     applyStatusData,
