@@ -60,6 +60,13 @@ double gps_get_longitude() {
   return gps.location.lng();
 }
 
+int gps_get_satellites() {
+  if (gps.satellites.isValid() && gps.satellites.age() < 10000) {
+    return (int)gps.satellites.value();
+  }
+  return -1;
+}
+
 IstTime gps_get_ist_time() {
   IstTime ist = { 0, 0, 0, 0, 0, 0, false };
   if (!gps.time.isValid() || !gps.date.isValid() || gps.time.age() > 10000 || gps.date.age() > 10000) {

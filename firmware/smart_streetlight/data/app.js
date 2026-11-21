@@ -21,6 +21,8 @@
     connectionText: document.getElementById('connection-text'),
     valLatitude: document.getElementById('val-latitude'),
     valLongitude: document.getElementById('val-longitude'),
+    valSatellites: document.getElementById('val-satellites'),
+    valTime: document.getElementById('val-time'),
     valSunrise: document.getElementById('val-sunrise'),
     valSunset: document.getElementById('val-sunset'),
     btnModeAuto: document.getElementById('btn-mode-auto'),
@@ -40,6 +42,11 @@
       ? Number(data.latitude).toFixed(4) : '--';
     el.valLongitude.textContent = (data.gpsValid && data.longitude !== null && data.longitude !== undefined)
       ? Number(data.longitude).toFixed(4) : '--';
+
+    // Satellites & Time (IST)
+    el.valSatellites.textContent = (data.satellites !== null && data.satellites !== undefined)
+      ? String(data.satellites) : '--';
+    el.valTime.textContent = data.time || '--';
 
     // Sunrise & Sunset
     el.valSunrise.textContent = data.sunrise || '--';
@@ -69,6 +76,8 @@
   function resetLiveTelemetryToDefault() {
     el.valLatitude.textContent = '--';
     el.valLongitude.textContent = '--';
+    el.valSatellites.textContent = '--';
+    el.valTime.textContent = '--';
     el.valSunrise.textContent = '--';
     el.valSunset.textContent = '--';
     el.relayStateBadge.textContent = '--';

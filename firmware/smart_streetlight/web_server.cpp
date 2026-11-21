@@ -57,35 +57,53 @@ static void handle_get_status() {
 #if defined(ARDUINOJSON_VERSION_MAJOR) && ARDUINOJSON_VERSION_MAJOR >= 7
   JsonDocument doc;
 #else
-  StaticJsonDocument<384> doc;
+  StaticJsonDocument<512> doc;
 #endif
 
   bool validLocation = gps_is_valid();
   doc["gpsValid"] = validLocation;
 
+  double lat = 0.0;
+  double lon = 0.0;
   if (validLocation) {
-    double lat = gps_get_latitude();
-    double lon = gps_get_longitude();
+    lat = gps_get_latitude();
+    lon = gps_get_longitude();
     doc["latitude"] = lat;
     doc["longitude"] = lon;
+  } else {
+    doc["latitude"] = nullptr;
+    doc["longitude"] = nullptr;
+  }
 
-    IstTime ist = gps_get_ist_time();
-    if (ist.valid) {
-      SunTimes sun = sun_calculate(lat, lon, ist.year, ist.month, ist.day);
-      if (sun.valid) {
-        doc["sunrise"] = sun.sunrise;
-        doc["sunset"] = sun.sunset;
-      } else {
-        doc["sunrise"] = nullptr;
-        doc["sunset"] = nullptr;
-      }
+  // Current IST time (HH:MM) from GPS
+  IstTime ist = gps_get_ist_time();
+  char istTimeStr[8];
+  if (ist.valid) {
+    snprintf(istTimeStr, sizeof(istTimeStr), "%02d:%02d", ist.hour, ist.minute);
+    doc["time"] = istTimeStr;
+  } else {
+    doc["time"] = nullptr;
+  }
+
+  // Number of satellites tracked by TinyGPSPlus
+  int sats = gps_get_satellites();
+  if (sats >= 0) {
+    doc["satellites"] = sats;
+  } else {
+    doc["satellites"] = nullptr;
+  }
+
+  // Solar schedule (Sunrise / Sunset in IST)
+  if (validLocation && ist.valid) {
+    SunTimes sun = sun_calculate(lat, lon, ist.year, ist.month, ist.day);
+    if (sun.valid) {
+      doc["sunrise"] = sun.sunrise;
+      doc["sunset"] = sun.sunset;
     } else {
       doc["sunrise"] = nullptr;
       doc["sunset"] = nullptr;
     }
   } else {
-    doc["latitude"] = nullptr;
-    doc["longitude"] = nullptr;
     doc["sunrise"] = nullptr;
     doc["sunset"] = nullptr;
   }
