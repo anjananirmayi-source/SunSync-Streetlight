@@ -1,0 +1,24 @@
+# Secrets - Wi-Fi and sensitive credentials
+secrets.h
+*.local.h
+
+# Python / Environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Build and IDE artifacts
+.vscode/
+.idea/
+*.pio
+.pio/
+build/
+*.bin
+*.elf
+
+# OS specific
+.DS_Store
+Thumbs.db
