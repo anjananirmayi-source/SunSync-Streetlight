@@ -211,7 +211,12 @@
 
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.ok) {
-        // Fetch /api/status and update the Relay Output status immediately
+        // Apply lightOn immediately to avoid race with the polling interval
+        if (state.lastStatus && data.lightOn !== undefined) {
+          state.lastStatus.lightOn = data.lightOn;
+          el.relayStateBadge.textContent = data.lightOn ? 'ON' : 'OFF';
+          el.relayStateBadge.className = `relay-state-badge ${data.lightOn ? 'badge-on' : 'badge-off'}`;
+        }
         await pollStatus();
       } else {
         const errMsg = data.message || `Command failed with status ${response.status} (${data.error || 'ERROR'})`;
@@ -248,6 +253,12 @@
 
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.ok) {
+        // Apply mode immediately to avoid race with the polling interval
+        if (state.lastStatus) {
+          state.lastStatus.mode = data.mode || targetMode;
+          state.lastStatus.automationEnabled = (targetMode === 'AUTO');
+        }
+        updateButtonStates();
         await pollStatus();
       } else {
         setCommandError(data.message || `Mode switch failed (${data.error || 'ERROR'})`);
